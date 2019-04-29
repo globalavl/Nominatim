@@ -246,10 +246,13 @@ class ReverseGeocode
         $fSearchDiam = 0.006;
         $oResult = null;
         $aPlace = null;
+        
+        // Origin main place
+        $aOriginWayPlace = null;
 
         // for POI or street level
         if ($iMaxRank >= 26) {
-            $sSQL = 'select place_id,parent_place_id,rank_address,country_code,';
+            $sSQL = 'select place_id,parent_place_id,rank_address,country_code,osm_type,';
             $sSQL .= ' ST_distance('.$sPointSQL.', geometry) as distance';
             $sSQL .= ' FROM ';
             $sSQL .= ' placex';
@@ -280,6 +283,9 @@ class ReverseGeocode
                 $oResult = new Result($iPlaceID);
                 $iRankAddress = $aPlace['rank_address'];
                 $iParentPlaceID = $aPlace['parent_place_id'];
+                if ($aPlace['rank_address'] == 26 && $aPlace['osm_type'] == 'W') {
+                    $aOriginWayPlace = $aPlace;
+                }
             }
 
             if ($bDoInterpolation && $iMaxRank >= 30) {
@@ -361,6 +367,9 @@ class ReverseGeocode
         } else {
             // lower than street level ($iMaxRank < 26 )
             $oResult = $this->lookupLargeArea($sPointSQL, $iMaxRank);
+        }
+        if (isset($aOriginWayPlace)) {
+            $oResult->iResultOriginWayPlace = (int) $aOriginWayPlace['place_id'] ;
         }
         return $oResult;
     }

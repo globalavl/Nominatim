@@ -7,6 +7,7 @@ require_once(CONST_BasePath.'/lib/log.php');
 require_once(CONST_BasePath.'/lib/PlaceLookup.php');
 require_once(CONST_BasePath.'/lib/ReverseGeocode.php');
 require_once(CONST_BasePath.'/lib/output.php');
+require_once(CONST_BasePath.'/lib/Result.php');
 ini_set('memory_limit', '200M');
 
 $oParams = new Nominatim\ParameterParser();
@@ -17,7 +18,7 @@ $sOutputFormat = $oParams->getSet('format', array('html', 'xml', 'json', 'jsonv2
 // Preferred language
 $aLangPrefOrder = $oParams->getPreferredLanguages();
 
-$oDB =& getDB();
+$oDB =& getDB(false,true);
 
 $hLog = logStart($oDB, 'reverse', $_SERVER['QUERY_STRING'], $aLangPrefOrder);
 
@@ -30,6 +31,7 @@ $iOsmId = $oParams->getInt('osm_id', -1);
 $fLat = $oParams->getFloat('lat');
 $fLon = $oParams->getFloat('lon');
 $iZoom = $oParams->getInt('zoom', 18);
+$bOriginWayExtraTags = $oParams->getBool('originway-extratags', false);
 
 if ($sOsmType && $iOsmId > 0) {
     $aPlace = $oPlaceLookup->lookupOSMID($sOsmType, $iOsmId);
@@ -63,6 +65,17 @@ if (isset($aPlace)) {
     if ($aOutlineResult) {
         $aPlace = array_merge($aPlace, $aOutlineResult);
     }
+
+    if($bOriginWayExtraTags && $oLookup->iResultOriginWayPlace) {
+        $oPlaceLookup->setIncludeAddressDetails(false);
+        $aPlacesParent = $oPlaceLookup->lookup( array($oLookup->iResultOriginWayPlace => new Nominatim\Result( $oLookup->iResultOriginWayPlace )));
+        if (!empty($aPlacesParent)) {
+            $aPlaceParent = reset($aPlacesParent);
+        } else {
+            $aPlaceParent = array();
+        }
+        if (CONST_Debug) var_dump($aPlaceParent);
+    }
 } else {
     $aPlace = array();
 }
@@ -70,6 +83,9 @@ if (isset($aPlace)) {
 
 if (CONST_Debug) {
     var_dump($aPlace);
+	if ($bOriginWayExtraTags) {
+		var_dump($aPlaceParent);
+	}
     exit;
 }
 

@@ -26,6 +26,8 @@ class Result
     public $iExactMatches = 0;
     /// Subranking within the results (the higher the worse).
     public $iResultRank = 0;
+    /// getting parentid.
+    public $iResultOriginWayPlace = null;
 
     public function debugInfo()
     {
@@ -34,7 +36,8 @@ class Result
                 'ID' => $this->iId,
                 'House number' => $this->iHouseNumber,
                 'Exact Matches' => $this->iExactMatches,
-                'Result rank' => $this->iResultRank
+                'Result rank' => $this->iResultRank,
+                'Result OriginPlace' => $this->iResultOriginWayPlace
                );
     }
 
