@@ -368,7 +368,7 @@ class ReverseGeocode
             // lower than street level ($iMaxRank < 26 )
             $oResult = $this->lookupLargeArea($sPointSQL, $iMaxRank);
         }
-        if (isset($aOriginWayPlace)) {
+        if (isset($aOriginWayPlace) &&  ( (int) $aOriginWayPlace['place_id'] != $oResult->iId ) ) {
             $oResult->iResultOriginWayPlace = (int) $aOriginWayPlace['place_id'] ;
         }
         return $oResult;
