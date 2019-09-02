@@ -22,7 +22,7 @@ There are two ways how the requested location can be specified:
 
     A specific OSM node(N), way(W) or relation(R) to return an address for.
 
-In both cases exactly one object is returned. The two input paramters cannot
+In both cases exactly one object is returned. The two input parameters cannot
 be used at the same time. Both accept the additional optional parameters listed
 below.
 
@@ -34,7 +34,7 @@ See [Place Output Formats](Output.md) for details on each format. (Default: html
 
 * `json_callback=<string>`
 
-Wrap json output in a callback function ([JSONP](https://en.wikipedia.org/wiki/JSONP)) i.e. `<string>(<json>)`.
+Wrap JSON output in a callback function ([JSONP](https://en.wikipedia.org/wiki/JSONP)) i.e. `<string>(<json>)`.
 Only has an effect for JSON output formats.
 
 ### Output details
@@ -80,7 +80,8 @@ In terms of address details the zoom levels are as follows:
   8   | county
   10  | city
   14  | suburb
-  16  | street
+  16  | major streets
+  17  | major and minor streets
   18  | building
 
 
@@ -134,7 +135,7 @@ This overrides the specified machine readable format. (Default: 0)
       <postcode>B72</postcode>
       <country>United Kingdom</country>
       <country_code>gb</country_code>
-    </addressparts>   
+    </addressparts>
   </reversegeocode>
 ```
 
@@ -145,7 +146,7 @@ This overrides the specified machine readable format. (Default: 0)
 ```json
 {
   "place_id":"134140761",
-  "licence":"Data © OpenStreetMap contributors, ODbL 1.0. http:\/\/www.openstreetmap.org\/copyright",
+  "licence":"Data © OpenStreetMap contributors, ODbL 1.0. https:\/\/www.openstreetmap.org\/copyright",
   "osm_type":"way",
   "osm_id":"280940520",
 "lat":"-34.4391708",

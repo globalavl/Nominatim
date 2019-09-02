@@ -24,7 +24,7 @@ but the `class` parameter is left out, then one of the places will be chosen
 at random and displayed.
 
 ```
-  https://nominatim.openstreetmap.org/details?placeid=<value>
+  https://nominatim.openstreetmap.org/details?place_id=<value>
 ```
 
 Placeids are assigned sequentially during Nominatim data import. The id for a place is different between Nominatim installation (servers) and changes when data gets reimported. Therefore it can't be used as permanent id and shouldn't be used in bug reports.
@@ -40,7 +40,7 @@ See [Place Output Formats](Output.md) for details on each format. (Default: html
 
 * `json_callback=<string>`
 
-Wrap json output in a callback function (JSONP) i.e. `<string>(<json>)`.
+Wrap JSON output in a callback function (JSONP) i.e. `<string>(<json>)`.
 Only has an effect for JSON output formats.
 
 * `pretty=[0|1]`

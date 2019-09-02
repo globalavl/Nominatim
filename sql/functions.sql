@@ -547,7 +547,7 @@ BEGIN
 -- RAISE WARNING 'get_country_code, start: %', ST_AsText(place_centre);
 
   -- Try for a OSM polygon
-  FOR nearcountry IN select country_code from location_area_country where country_code is not null and not isguess and st_covers(geometry, place_centre) limit 1
+  FOR nearcountry IN select country_code from location_area_country where country_code is not null and st_covers(geometry, place_centre) limit 1
   LOOP
     RETURN nearcountry.country_code;
   END LOOP;
@@ -768,6 +768,28 @@ END;
 $$
 LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION osmline_reinsert(node_id BIGINT, geom GEOMETRY)
+  RETURNS BOOLEAN
+  AS $$
+DECLARE
+  existingline RECORD;
+BEGIN
+   SELECT w.id FROM planet_osm_ways w, location_property_osmline p
+     WHERE p.linegeo && geom and p.osm_id = w.id and p.indexed_status = 0
+           and node_id = any(w.nodes) INTO existingline;
+
+   IF existingline.id is not NULL THEN
+       DELETE FROM location_property_osmline WHERE osm_id = existingline.id;
+       INSERT INTO location_property_osmline (osm_id, address, linegeo)
+         SELECT osm_id, address, geometry FROM place
+           WHERE osm_type = 'W' and osm_id = existingline.id;
+   END IF;
+
+   RETURN true;
+END;
+$$
+LANGUAGE plpgsql;
+
 
 CREATE OR REPLACE FUNCTION osmline_insert() RETURNS TRIGGER
   AS $$
@@ -887,11 +909,7 @@ BEGIN
     END IF;
 
     -- some postcorrections
-    IF NEW.class = 'place' THEN
-      IF NEW.type in ('continent', 'sea', 'country', 'state') AND NEW.osm_type = 'N' THEN
-        NEW.rank_address := 0;
-      END IF;
-    ELSEIF NEW.class = 'waterway' AND NEW.osm_type = 'R' THEN
+    IF NEW.class = 'waterway' AND NEW.osm_type = 'R' THEN
         -- Slightly promote waterway relations so that they are processed
         -- before their members.
         NEW.rank_search := NEW.rank_search - 1;
@@ -908,16 +926,14 @@ BEGIN
     NEW.country_code := NULL;
   END IF;
 
--- Block import below rank 22
---  IF NEW.rank_search > 22 THEN
---    RETURN NULL;
---  END IF;
-
   --DEBUG: RAISE WARNING 'placex_insert:END: % % % %',NEW.osm_type,NEW.osm_id,NEW.class,NEW.type;
 
   RETURN NEW; -- %DIFFUPDATES% The following is not needed until doing diff updates, and slows the main index process down
 
-  IF NEW.rank_address > 0 THEN
+  IF NEW.osm_type = 'N' and NEW.rank_search > 28 THEN
+      -- might be part of an interpolation
+      result := osmline_reinsert(NEW.osm_id, NEW.geometry);
+  ELSEIF NEW.rank_address > 0 THEN
     IF (ST_GeometryType(NEW.geometry) in ('ST_Polygon','ST_MultiPolygon') AND ST_IsValid(NEW.geometry)) THEN
       -- Performance: We just can't handle re-indexing for country level changes
       IF st_area(NEW.geometry) < 1 THEN
@@ -1162,6 +1178,7 @@ TRIGGER
 DECLARE
 
   place_centroid GEOMETRY;
+  near_centroid GEOMETRY;
 
   search_maxdistance FLOAT[];
   search_mindistance FLOAT[];
@@ -1238,6 +1255,8 @@ BEGIN
   END IF;
 
   --DEBUG: RAISE WARNING 'Copy over address tags';
+  -- housenumber is a computed field, so start with an empty value
+  NEW.housenumber := NULL;
   IF NEW.address is not NULL THEN
       IF NEW.address ? 'conscriptionnumber' THEN
         i := getorcreate_housenumber_id(make_standard_name(NEW.address->'conscriptionnumber'));
@@ -1266,6 +1285,8 @@ BEGIN
   -- Speed up searches - just use the centroid of the feature
   -- cheaper but less acurate
   place_centroid := ST_PointOnSurface(NEW.geometry);
+  -- For searching near features rather use the centroid
+  near_centroid := ST_Envelope(NEW.geometry);
   NEW.centroid := null;
   NEW.postcode := null;
   --DEBUG: RAISE WARNING 'Computing preliminary centroid at %',ST_AsText(place_centroid);
@@ -1396,7 +1417,7 @@ BEGIN
     IF NEW.parent_place_id IS NULL AND addr_street IS NOT NULL THEN
       address_street_word_ids := get_name_ids(make_standard_name(addr_street));
       IF address_street_word_ids IS NOT NULL THEN
-        SELECT place_id from getNearestNamedRoadFeature(NEW.partition, place_centroid, address_street_word_ids) INTO NEW.parent_place_id;
+        SELECT place_id from getNearestNamedRoadFeature(NEW.partition, near_centroid, address_street_word_ids) INTO NEW.parent_place_id;
       END IF;
     END IF;
     --DEBUG: RAISE WARNING 'Checked for addr:street (%)', NEW.parent_place_id;
@@ -1404,7 +1425,7 @@ BEGIN
     IF NEW.parent_place_id IS NULL AND addr_place IS NOT NULL THEN
       address_street_word_ids := get_name_ids(make_standard_name(addr_place));
       IF address_street_word_ids IS NOT NULL THEN
-        SELECT place_id from getNearestNamedPlaceFeature(NEW.partition, place_centroid, address_street_word_ids) INTO NEW.parent_place_id;
+        SELECT place_id from getNearestNamedPlaceFeature(NEW.partition, near_centroid, address_street_word_ids) INTO NEW.parent_place_id;
       END IF;
     END IF;
     --DEBUG: RAISE WARNING 'Checked for addr:place (%)', NEW.parent_place_id;
@@ -1439,7 +1460,7 @@ BEGIN
           IF location.address ? 'street' THEN
             address_street_word_ids := get_name_ids(make_standard_name(location.address->'street'));
             IF address_street_word_ids IS NOT NULL THEN
-              SELECT place_id from getNearestNamedRoadFeature(NEW.partition, place_centroid, address_street_word_ids) INTO NEW.parent_place_id;
+              SELECT place_id from getNearestNamedRoadFeature(NEW.partition, near_centroid, address_street_word_ids) INTO NEW.parent_place_id;
               EXIT WHEN NEW.parent_place_id is not NULL;
             END IF;
           END IF;
@@ -1448,7 +1469,7 @@ BEGIN
           IF location.address ? 'place' THEN
             address_street_word_ids := get_name_ids(make_standard_name(location.address->'place'));
             IF address_street_word_ids IS NOT NULL THEN
-              SELECT place_id from getNearestNamedPlaceFeature(NEW.partition, place_centroid, address_street_word_ids) INTO NEW.parent_place_id;
+              SELECT place_id from getNearestNamedPlaceFeature(NEW.partition, near_centroid, address_street_word_ids) INTO NEW.parent_place_id;
               EXIT WHEN NEW.parent_place_id is not NULL;
             END IF;
           END IF;
@@ -1477,7 +1498,7 @@ BEGIN
 
     -- Still nothing, just use the nearest road
     IF NEW.parent_place_id IS NULL THEN
-      SELECT place_id FROM getNearestRoadFeature(NEW.partition, place_centroid) INTO NEW.parent_place_id;
+      SELECT place_id FROM getNearestRoadFeature(NEW.partition, near_centroid) INTO NEW.parent_place_id;
     END IF;
     --DEBUG: RAISE WARNING 'Checked for nearest way (%)', NEW.parent_place_id;
 
@@ -1500,7 +1521,7 @@ BEGIN
              NEW.postcode := location.postcode;
           END IF;
           IF NEW.postcode is null THEN
-            NEW.postcode := get_nearest_postcode(NEW.country_code, place_centroid);
+            NEW.postcode := get_nearest_postcode(NEW.country_code, NEW.geometry);
           END IF;
       END IF;
 
@@ -1803,7 +1824,7 @@ BEGIN
 
       -- RAISE WARNING '% isaddress: %', location.place_id, location_isaddress;
       -- Add it to the list of search terms
-      IF NOT %REVERSE-ONLY% AND location.rank_search > 4 THEN
+      IF NOT %REVERSE-ONLY% THEN
           nameaddress_vector := array_merge(nameaddress_vector, location.keywords::integer[]);
       END IF;
       INSERT INTO place_addressline (place_id, address_place_id, fromarea, isaddress, distance, cached_rank_address)
@@ -2204,12 +2225,13 @@ BEGIN
         indexed_status = 2,
         geometry = NEW.geometry
         where place_id = existingplacex.place_id;
-
       -- if a node(=>house), which is part of a interpolation line, changes (e.g. the street attribute) => mark this line for reparenting 
       -- (already here, because interpolation lines are reindexed before nodes, so in the second call it would be too late)
-      IF NEW.osm_type='N' and NEW.class='place' and NEW.type='house' THEN
-          -- Is this node part of an interpolation line? search for it in location_property_osmline and mark the interpolation line for reparenting
-          update location_property_osmline p set indexed_status = 2 from planet_osm_ways w where p.linegeo && NEW.geometry and p.osm_id = w.id and NEW.osm_id = any(w.nodes);
+      IF NEW.osm_type='N'
+         and (coalesce(existing.address, ''::hstore) != coalesce(NEW.address, ''::hstore)
+             or existing.geometry::text != NEW.geometry::text)
+      THEN
+          result:= osmline_reinsert(NEW.osm_id, NEW.geometry);
       END IF;
 
       -- linked places should get potential new naming and addresses
