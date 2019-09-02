@@ -36,6 +36,7 @@ if (empty($aPlace)) {
         $aFilteredPlaces['address'] = $aPlace['address']->getAddressNames();
     }
     if (isset($aPlace['sExtraTags'])) $aFilteredPlaces['extratags'] = $aPlace['sExtraTags'];
+    if (isset($aPlaceParent['sExtraTags'])) $aFilteredPlaces['originway-extratags'] = $aPlaceParent['sExtraTags'];
     if (isset($aPlace['sNameDetails'])) $aFilteredPlaces['namedetails'] = $aPlace['sNameDetails'];
 
     if (isset($aPlace['aBoundingBox'])) {
